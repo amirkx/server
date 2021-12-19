@@ -30,6 +30,7 @@ namespace OC\Comments;
 
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\InvalidFieldNameException;
+use OC\DB\QueryBuilder\Literal;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Comments\CommentsEvent;
 use OCP\Comments\IComment;
@@ -102,6 +103,7 @@ class Manager implements ICommentsManager {
 		}
 		$data['children_count'] = (int)$data['children_count'];
 		$data['reference_id'] = $data['reference_id'] ?? null;
+		$data['reactions'] = json_decode($data['reactions'], true);
 		return $data;
 	}
 
@@ -875,10 +877,99 @@ class Manager implements ICommentsManager {
 		}
 
 		if ($affectedRows > 0 && $comment instanceof IComment) {
+			if ($comment->getVerb() === 'reaction_delete') {
+				$this->deleteReaction($comment);
+			}
 			$this->sendEvent(CommentsEvent::EVENT_DELETE, $comment);
 		}
 
 		return ($affectedRows > 0);
+	}
+
+	private function deleteReaction(IComment $comment): void {
+		$qb = $this->dbConn->getQueryBuilder();
+		$qb->delete('reactions')
+			->where($qb->expr()->eq('parent_id', $qb->createNamedParameter($comment->getParentId())))
+			->andWhere($qb->expr()->eq('message_id', $qb->createNamedParameter($comment->getId())))
+			->executeStatement();
+		$this->sumReactions($comment);
+	}
+
+	/**
+	 * Get comment related with user reaction
+	 *
+	 * @param integer $parentId
+	 * @param string $actorType
+	 * @param string $actorId
+	 * @param string $reaction
+	 * @return IComment
+	 * @throws NotFoundException
+	 * @since 24.0.0
+	 */
+	public function getReactionComment(int $parentId, string $actorType, string $actorId, string $reaction): IComment {
+		$qb = $this->dbConn->getQueryBuilder();
+		$messageId = $qb
+			->select('message_id')
+			->from('reactions')
+			->where($qb->expr()->eq('parent_id', $qb->createNamedParameter($parentId)))
+			->andWhere($qb->expr()->eq('actor_type', $qb->createNamedParameter($actorType)))
+			->andWhere($qb->expr()->eq('actor_id', $qb->createNamedParameter($actorId)))
+			->andWhere($qb->expr()->eq('reaction', $qb->createNamedParameter($reaction)))
+			->executeQuery()
+			->fetchOne();
+		if (!$messageId) {
+			throw new NotFoundException('Comment related with reaction not found');
+		}
+		return $this->get($messageId);
+	}
+
+	/**
+	 * Retrieve comments of reaction
+	 *
+	 * @param integer $parentId
+	 * @param string $reaction
+	 * @return IComment[]
+	 * @since 24.0.0
+	 */
+	public function retrieveCommentsOfReaction(int $parentId, string $reaction): ?array {
+		$qb = $this->dbConn->getQueryBuilder();
+		$result = $qb
+			->select('message_id')
+			->from('reactions')
+			->where($qb->expr()->eq('parent_id', $qb->createNamedParameter($parentId)))
+			->andWhere($qb->expr()->eq('reaction', $qb->createNamedParameter($reaction)))
+			->executeQuery();
+
+		$commentIds = [];
+		while ($data = $result->fetch()) {
+			$commentIds[] = $data['message_id'];
+		}
+		$comments = [];
+		if ($commentIds) {
+			$comments = $this->getCommentsOnList($commentIds);
+		}
+
+		return $comments;
+	}
+
+	private function getCommentsOnList(array $objectIds): array {
+		$query = $this->dbConn->getQueryBuilder();
+
+		$query->select('*')
+			->from('comments')
+			->where($query->expr()->in('id', $query->createNamedParameter($objectIds, IQueryBuilder::PARAM_STR_ARRAY)))
+			->orderBy('creation_timestamp', 'DESC')
+			->addOrderBy('id', 'DESC');
+
+		$comments = [];
+		$result = $query->executeQuery();
+		while ($data = $result->fetch()) {
+			$comment = $this->getCommentFromData($data);
+			$this->cache($comment);
+			$comments[] = $comment;
+		}
+		$result->closeCursor();
+		return $comments;
 	}
 
 	/**
@@ -964,10 +1055,64 @@ class Manager implements ICommentsManager {
 
 		if ($affectedRows > 0) {
 			$comment->setId((string)$qb->getLastInsertId());
+			if ($comment->getVerb() === 'reaction') {
+				$this->addReaction($comment);
+			}
 			$this->sendEvent(CommentsEvent::EVENT_ADD, $comment);
 		}
 
 		return $affectedRows > 0;
+	}
+
+	private function addReaction(IComment $comment): void {
+		$qb = $this->dbConn->getQueryBuilder();
+		$qb->insert('reactions')
+			->values([
+				'parent_id' => $qb->createNamedParameter($comment->getParentId()),
+				'message_id' => $qb->createNamedParameter($comment->getId()),
+				'actor_type' => $qb->createNamedParameter($comment->getActorType()),
+				'actor_id' => $qb->createNamedParameter($comment->getActorId()),
+				'reaction' => $qb->createNamedParameter($comment->getMessage()),
+			])
+			->executeStatement();
+		$this->sumReactions($comment);
+	}
+
+	private function sumReactions(IComment $comment): void {
+		$qb = $this->dbConn->getQueryBuilder();
+
+		$totalQuery = $this->dbConn->getQueryBuilder();
+		$totalQuery
+			->selectAlias(
+				$totalQuery->func()->concat(
+					$totalQuery->expr()->literal('"'),
+					new Literal('reaction'),
+					$totalQuery->expr()->literal('":'),
+					new Literal($totalQuery->func()->count('id'))
+				),
+				'total'
+			)
+			->from('reactions', 'r')
+			->where($totalQuery->expr()->eq('r.parent_id', $qb->createNamedParameter($comment->getParentId())))
+			->groupBy('r.reaction');
+
+		$jsonQuery = $this->dbConn->getQueryBuilder();
+		$jsonQuery
+			->selectAlias(
+				$totalQuery->func()->concat(
+					$jsonQuery->expr()->literal('{'),
+					$jsonQuery->func()->groupConcat('total'),
+					$jsonQuery->expr()->literal('}')
+				),
+				'json'
+			)
+			->from($jsonQuery->createFunction('(' . $totalQuery->getSQL() . ')'), 'json');
+
+		$qb
+			->update('comments')
+			->set('reactions', $jsonQuery->createFunction('(' . $jsonQuery->getSQL() . ')'))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($comment->getParentId())))
+			->executeStatement();
 	}
 
 	/**
@@ -989,6 +1134,10 @@ class Manager implements ICommentsManager {
 		} catch (InvalidFieldNameException $e) {
 			// See function insert() for explanation
 			$result = $this->updateQuery($comment, false);
+		}
+
+		if ($comment->getVerb() === 'reaction_delete') {
+			$this->deleteReaction($comment);
 		}
 
 		$this->sendEvent(CommentsEvent::EVENT_UPDATE, $comment);

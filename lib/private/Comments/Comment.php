@@ -44,6 +44,7 @@ class Comment implements IComment {
 		'referenceId' => null,
 		'creationDT' => null,
 		'latestChildDT' => null,
+		'reactions' => null,
 	];
 
 	/**
@@ -427,6 +428,31 @@ class Comment implements IComment {
 			}
 			$this->data['referenceId'] = $referenceId;
 		}
+		return $this;
+	}
+
+	/**
+	 * returns the reactions array if exists
+	 *
+	 * The keys is the emoji of reaction and the value is the total.
+	 *
+	 * @return array<integer, string> e.g. ["👍":1]
+	 */
+	public function getReactions(): array {
+		return $this->data['reactions'] ?? [];
+	}
+
+	/**
+	 * Set summarized array of reactions by reaction type
+	 *
+	 * The keys is the emoji of reaction and the value is the total.
+	 *
+	 * @param array<integer, string>|null $reactions e.g. ["👍":1]
+	 * @return IComment
+	 * @since 24.0.0
+	 */
+	public function setReactions(?array $reactions): IComment {
+		$this->data['reactions'] = $reactions;
 		return $this;
 	}
 
