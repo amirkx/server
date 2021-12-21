@@ -52,6 +52,24 @@ interface IFunctionBuilder {
 	public function concat($x, $y): IQueryFunction;
 
 	/**
+	 * Returns a string which is the concatenation of all non-NULL values of X
+	 *
+	 * Usage examples:
+	 *
+	 * groupCouncat('column') -- with comma as separator (default separator)
+	 *
+	 * groupCouncat('column', ';') -- with different separator
+	 *
+	 * groupCouncat(new Literal('DISTINCT column'), null) -- without separator
+	 *
+	 * @param string|ILiteral|IParameter|IQueryFunction $expr The expression to group
+	 * @param string|null $separator The separator
+	 * @return IQueryFunction
+	 * @since 24.0.0
+	 */
+	public function groupConcat($expr, ?string $separator = ','): IQueryFunction;
+
+	/**
 	 * Takes a substring from the input string
 	 *
 	 * @param string|ILiteral|IParameter|IQueryFunction $input The input string
