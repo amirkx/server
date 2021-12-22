@@ -81,6 +81,9 @@ class Util {
 	/** @var array */
 	private static $scriptDeps = [];
 
+	/** @var array */
+	private static $sortedScriptDeps = [];
+
 	/**
 	 * get the current installed version of Nextcloud
 	 * @return array
@@ -177,12 +180,13 @@ class Util {
 
 	/**
 	 * add a javascript file
+	 *
 	 * @param string $application
-	 * @param string $file
+	 * @param string|null $file
 	 * @param string $afterAppId
 	 * @since 4.0.0
 	 */
-	public static function addScript($application, $file = null, $afterAppId = null) {
+	public static function addScript(string $application, string $file = null, string $afterAppId = 'core'): void {
 		if (!empty($application)) {
 			$path = "$application/js/$file";
 		} else {
@@ -198,46 +202,88 @@ class Util {
 			self::addTranslations($application);
 		}
 
-		// store dependency if defined
-		if (!empty($afterAppId)) {
-			self::$scriptDeps[$application] = $afterAppId;
+		// store app in dependency list
+		if (!array_key_exists($application, self::$scriptDeps)) {
+			self::$scriptDeps[$application] = (object)[
+				'id' => $application,
+				'deps' => [$afterAppId],
+				'visited' => false,
+			];
+		} elseif (!in_array($afterAppId, self::$scriptDeps[$application]->deps, true)) {
+			self::$scriptDeps[$application]->deps[] = $afterAppId;
 		}
 
 		self::$scripts[$application][] = $path;
 	}
 
 	/**
-	 * Return the list of scripts injected to the page
-	 * @return array
+	 * Recursive topological sorting
+	 *
+	 * @param object $app
+	 * @param array|null $parents
+	 * @throws CircularDependencyException
 	 * @since 24.0.0
 	 */
-	public static function getScripts(): array {
-		// Sort by dependency if any
-		$sortByDeps = static function (string $app1, string $app2): int {
-			// Always sort core first
-			if ($app1 === 'core') {
-				return -1;
-			}
-			if ($app2 === 'core') {
-				return 1;
-			}
+	private static function topSortVisit(object $app, array &$parents = null): void {
+		// Detect circular dependencies
+		if (isset($parents[$app->id])) {
+			throw new CircularDependencyException('Circular app script dependency at app ' . $app->id);
+		}
 
-			// If app1 has a dependency
-			if (array_key_exists($app1, self::$scriptDeps)) {
-				$apps = array_keys(self::$scripts);
-				// Move app1 backwards if dep comes afterwards
-				if (array_search($app1, $apps, true) <
-					array_search(self::$scriptDeps[$app1], $apps, true)) {
-					return 1;
+		// If app has not been visited
+		if (!$app->visited) {
+			$parents[$app->id] = true;
+			$app->visited = true;
+
+			foreach ($app->deps as $dep) {
+				if ($app->id === $dep) {
+					// Ignore dependency on itself
+					continue;
+				}
+
+				if (isset(self::$scriptDeps[$dep])) {
+					$newParents = $parents;
+					self::topSortVisit(self::$scriptDeps[$dep], $newParents);
 				}
 			}
 
-			return 0;
-		};
-		uksort(self::$scripts, $sortByDeps);
+			self::$sortedScriptDeps[] = $app->id;
+		}
+	}
+
+	/**
+	 * Return the list of scripts injected to the page
+	 *
+	 * @return array
+	 * @throws CircularDependencyException
+	 * @since 24.0.0
+	 */
+	public static function getScripts(): array {
+		// Sort scripts topologically by their dependencies
+		// Implementation based on https://github.com/marcj/topsort.php
+
+		// Reset if scriptDeps had been sorted into sortedScriptDeps before
+		if (!empty(self::$sortedScriptDeps)) {
+			self::$sortedScriptDeps = [];
+			foreach (self::$scriptDeps as $app) {
+				$app->visited = false;
+			}
+		}
+
+		// Sort scriptDeps into sortedScriptDeps
+		foreach (self::$scriptDeps as $app) {
+			$parents = [];
+			self::topSortVisit($app, $parents);
+		}
+
+		// Sort scripts into sortedScripts based on sortedScriptDeps order
+		$sortedScripts = [];
+		foreach (self::$sortedScriptDeps as $app) {
+			$sortedScripts[$app] = self::$scripts[$app] ?? [];
+		}
 
 		// Flatten array and remove duplicates
-		return self::$scripts ? array_unique(array_merge(...array_values(self::$scripts))) : [];
+		return $sortedScripts ? array_unique(array_merge(...array_values(($sortedScripts)))) : [];
 	}
 
 	/**
