@@ -9,7 +9,6 @@
 namespace Test;
 
 use OC_Util;
-use OCP\CircularDependencyException;
 
 /**
  * Class UtilTest
@@ -312,8 +311,9 @@ class UtilTest extends \Test\TestCase {
 		\OCP\Util::addScript('circular', 'file1', 'dependency');
 		\OCP\Util::addScript('dependency', 'file2', 'circular');
 
-		$this->expectException(CircularDependencyException::class);
-		\OCP\Util::getScripts();
+		$scripts = \OCP\Util::getScripts();
+		$this->assertContains('circular/js/file1', $scripts);
+		$this->assertContains('dependency/js/file2', $scripts);
 	}
 
 	public function testAddVendorScript() {

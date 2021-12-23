@@ -12,6 +12,7 @@
  * @author J0WI <J0WI@users.noreply.github.com>
  * @author Jens-Christian Fischer <jens-christian.fischer@switch.ch>
  * @author Joas Schilling <coding@schilljs.com>
+ * @author Jonas Meurer <jonas@freesources.org>
  * @author Julius Härtl <jus@bitgrid.net>
  * @author Lukas Reschke <lukas@statuscode.ch>
  * @author Michael Gapczynski <GapczynskiM@gmail.com>
@@ -221,13 +222,12 @@ class Util {
 	 *
 	 * @param object $app
 	 * @param array|null $parents
-	 * @throws CircularDependencyException
 	 * @since 24.0.0
 	 */
 	private static function topSortVisit(object $app, array &$parents = null): void {
-		// Detect circular dependencies
+		// Detect and log circular dependencies
 		if (isset($parents[$app->id])) {
-			throw new CircularDependencyException('Circular app script dependency at app ' . $app->id);
+			self::writeLog('core', 'Circular dependency in app scripts at app ' . $app->id, \OCP\ILogger::ERROR);
 		}
 
 		// If app has not been visited
@@ -255,7 +255,6 @@ class Util {
 	 * Return the list of scripts injected to the page
 	 *
 	 * @return array
-	 * @throws CircularDependencyException
 	 * @since 24.0.0
 	 */
 	public static function getScripts(): array {
