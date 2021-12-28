@@ -23,16 +23,25 @@
 
 namespace OC;
 
+use Psr\Log\LoggerInterface;
+
 /**
  * Sort scripts topologically by their dependencies
  * Implementation based on https://github.com/marcj/topsort.php
  */
 class AppScriptSort {
+	/** @var LoggerInterface */
+	private $logger;
+
 	/** @var AppScriptDependency[] */
 	private $scriptDeps;
 
 	/** @var string[] */
 	private $sortedScriptDeps;
+
+	public function __construct() {
+		$this->logger = \OC::$server->get(LoggerInterface::class);
+	}
 
 	/**
 	 * Recursive topological sorting
@@ -43,7 +52,7 @@ class AppScriptSort {
 	private function topSortVisit(AppScriptDependency $app, array &$parents = null): void {
 		// Detect and log circular dependencies
 		if (isset($parents[$app->getId()])) {
-			\OCP\Util::writeLog('core', 'Circular dependency in app scripts at app ' . $app->getId(), \OCP\ILogger::ERROR);
+			$this->logger->error('Circular dependency in app scripts at app ' . $app->getId());
 		}
 
 		// If app has not been visited
