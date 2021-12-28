@@ -18,13 +18,7 @@ use OC\AppScriptSort;
  * @group DB
  */
 class AppScriptSortTest extends \Test\TestCase {
-	protected function setUp(): void {
-		parent::setUp();
-
-		\OC_Util::$scripts = [];
-	}
-
-	public function testSort() {
+	public function testSort(): void {
 		$scripts = [
 			'first' => ['myFirstJSFile'],
 			'core' => [
@@ -51,8 +45,8 @@ class AppScriptSortTest extends \Test\TestCase {
 			'myApp2' => new AppScriptDependency('myApp2', ['myApp']),
 		];
 
-		$scriptSort = new AppScriptSort($scripts, $scriptDeps);
-		$sortedScripts = $scriptSort->sort();
+		$scriptSort = new AppScriptSort();
+		$sortedScripts = $scriptSort->sort($scripts, $scriptDeps);
 
 		$sortedScriptKeys = array_keys($sortedScripts);
 
@@ -83,6 +77,29 @@ class AppScriptSortTest extends \Test\TestCase {
 			array_search('myApp5', $sortedScriptKeys, true),
 			array_search('myApp2', $sortedScriptKeys, true)
 		);
+
+		// All apps still there
+		foreach ($scripts as $app => $_) {
+			$this->assertContains($app, $sortedScriptKeys);
+		}
+	}
+
+	public function testSortCircularDependency(): void {
+		$scripts = [
+			'circular' => ['circular/js/file1'],
+			'dependency' => ['dependency/js/file2'],
+		];
+		$scriptDeps = [
+			'circular' => new AppScriptDependency('circular', ['dependency']),
+			'dependency' => new AppScriptDependency('dependency', ['circular']),
+		];
+
+		// Todo: test if circular dependency is detected and logged as an error
+
+		$scriptSort = new AppScriptSort();
+		$sortedScripts = $scriptSort->sort($scripts, $scriptDeps);
+
+		$sortedScriptKeys = array_keys($sortedScripts);
 
 		// All apps still there
 		foreach ($scripts as $app => $_) {

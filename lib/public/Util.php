@@ -225,8 +225,8 @@ class Util {
 	 */
 	public static function getScripts(): array {
 		// Sort scriptDeps into sortedScriptDeps
-		$scriptSort = new AppScriptSort(self::$scripts, self::$scriptDeps);
-		$sortedScripts = $scriptSort->sort();
+		$scriptSort = new AppScriptSort();
+		$sortedScripts = $scriptSort->sort(self::$scripts, self::$scriptDeps);
 
 		// Flatten array and remove duplicates
 		return $sortedScripts ? array_unique(array_merge(...array_values(($sortedScripts)))) : [];

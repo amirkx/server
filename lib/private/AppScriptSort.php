@@ -28,19 +28,11 @@ namespace OC;
  * Implementation based on https://github.com/marcj/topsort.php
  */
 class AppScriptSort {
-	/** @var array */
-	private $scripts;
-
 	/** @var AppScriptDependency[] */
 	private $scriptDeps;
 
 	/** @var string[] */
 	private $sortedScriptDeps;
-
-	public function __construct(array $scripts, array $scriptDeps) {
-		$this->scripts = $scripts;
-		$this->scriptDeps = $scriptDeps;
-	}
 
 	/**
 	 * Recursive topological sorting
@@ -78,7 +70,9 @@ class AppScriptSort {
 	/**
 	 * @return array scripts sorted by dependencies
 	 */
-	public function sort(): array {
+	public function sort(array $scripts, array $scriptDeps): array {
+		$this->scriptDeps = $scriptDeps;
+
 		// Sort scriptDeps into sortedScriptDeps
 		foreach ($this->scriptDeps as $app) {
 			$parents = [];
@@ -88,13 +82,13 @@ class AppScriptSort {
 		// Sort scripts into sortedScripts based on sortedScriptDeps order
 		$sortedScripts = [];
 		foreach ($this->sortedScriptDeps as $app) {
-			$sortedScripts[$app] = $this->scripts[$app] ?? [];
+			$sortedScripts[$app] = $scripts[$app] ?? [];
 		}
 
 		// Add remaining scripts
-		foreach ($this->scripts as $app => $scripts) {
+		foreach (array_keys($scripts) as $app) {
 			if (!isset($sortedScripts[$app])) {
-				$sortedScripts[$app] = $this->scripts[$app];
+				$sortedScripts[$app] = $scripts[$app];
 			}
 		}
 
