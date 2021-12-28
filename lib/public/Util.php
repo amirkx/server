@@ -46,7 +46,6 @@
 
 namespace OCP;
 
-
 use OC\AppScriptDependency;
 use OC\AppScriptSort;
 

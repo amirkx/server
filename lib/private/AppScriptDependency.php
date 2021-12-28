@@ -94,6 +94,4 @@ class AppScriptDependency {
 	public function setVisited(bool $visited): void {
 		$this->visited = $visited;
 	}
-
-
 }
