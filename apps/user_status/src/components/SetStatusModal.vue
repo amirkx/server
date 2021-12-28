@@ -238,11 +238,22 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+::v-deep .modal-wrapper {
+	// TODO: can be removed once migrated to @nextcloud-vue >= 5.0
+	.prev, .next {
+		display: none !important;
+	}
+
+	.modal-container {
+		max-height: 100% !important;
+	}
+}
+
 .set-status-modal {
 	min-height: 200px;
 	padding: 8px 20px 20px 20px;
 	// Enable scrollbar for too long content, same way as in Dashboard customize
-	max-height: 70vh;
+	max-height: 95vh;
 	overflow: auto;
 
 	&__header {
